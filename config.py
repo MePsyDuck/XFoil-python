@@ -6,7 +6,6 @@ import wexpect
 cwd = os.getcwd()
 lib_dir = os.path.join(cwd, 'lib')
 xfoil_path = os.path.join(lib_dir, 'xfoil.exe')
-output_dir = os.path.join(cwd, 'output')
 parsed_dir = os.path.join(cwd, 'parsed')
 new_polar_dir = 'newpolar'
 

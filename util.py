@@ -1,10 +1,6 @@
 import os
 
-from config import output_dir, parsed_dir, new_polar_dir
-
-
-def output_file_path(file_name):
-    return os.path.join(output_dir, file_name)
+from config import parsed_dir, new_polar_dir
 
 
 def parsed_file_path(file_name):
