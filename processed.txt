@@ -256,3 +256,12 @@ mh78.dat
 naca0021.dat
 mh70.dat
 naca2421.dat
+naca4424.dat
+naca4412.dat
+naca4418.dat
+naca2418.dat
+naca4421.dat
+naca2424.dat
+naca6412.dat
+s1210.dat
+ah83159.dat

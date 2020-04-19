@@ -14,6 +14,7 @@ iterations = 1
 step_size = 0.25
 smaller_step_size = 0.1
 batch_count = 5
+max_restarts = 5
 
 # Constant prompts
 XFOIL_C = ' XFOIL   c>'
