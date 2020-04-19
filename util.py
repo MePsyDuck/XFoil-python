@@ -1,5 +1,4 @@
 import os
-import shutil
 
 from config import parsed_dir, new_polar_dir
 
@@ -31,8 +30,11 @@ def get_unprocessed_files():
 
 
 def remove_partial_processed_files(parsed_files):
-    for file in parsed_files:
-        shutil.rmtree(file)
+    for file_name in parsed_files:
+        folder_name = file_name.split('.')[0]
+        file_path = parsed_newpolar_file_path(folder_name)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
 
 def seq(start, stop, step=1):
