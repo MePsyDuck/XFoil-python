@@ -3,7 +3,7 @@ import time
 
 import wexpect
 
-from config import xfoil_path, step_size, smaller_step_size, XFOIL_C, MDES_C, POLAR_DUMP_P, POLAR_SAVE_P, ALFA_END, \
+from config import xfoil_path, step_size, smaller_step_size, XFOIL_C, MDES_C, POLAR_DUMP_P, POLAR_SAVE_P, ALFA_P, \
     OPER_C
 from util import parsed_file_path, seq, parsed_newpolar_file_path, get_unprocessed_files
 
@@ -44,36 +44,81 @@ def reset(xfoil):
     xfoil.sendline('')
 
 
+def init(xfoil):
+    xfoil.sendline('INIT')
+
+
 def change_alpha(xfoil, alpha):
     xfoil.sendline('ALFA ' + str(alpha))
     try:
-        return xfoil.expect(ALFA_END, timeout=120)
+        return xfoil.expect(ALFA_P, timeout=300)
     except wexpect.wexpect_util.TIMEOUT:
         return -1
 
 
-def run_sequence(xfoil, p_index, foil_name, start, end, step_size_, smaller_step_size_):
-    for alpha in seq(start, end, step_size_):
-        if change_alpha(xfoil, alpha) == 0:
-            for smaller_alpha in seq(alpha - step_size_, alpha, smaller_step_size_):
-                if change_alpha(xfoil, smaller_alpha) == -1:
-                    print(str(p_index) + ': File timed out: ' + foil_name + ' smaller_alpha: ' + str(smaller_alpha))
-        else:
-            print(str(p_index) + ': File timed out: ' + foil_name + ' alpha: ' + str(alpha))
-
-
 def run_xfoil(p_index, parsed_file):
-    start = time.time()
     xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
+
+    start_time = time.time()
     foil_name = parsed_file.split('.')[0]
 
     if load_file(xfoil, parsed_file, foil_name):
+        for alpha in seq(0, 20, step_size):
+            result = change_alpha(xfoil, alpha)
+            if result == 0:
+                continue
+            elif result == 1:
+                print(str(p_index) + ': File: ' + foil_name + ' convergence failed for alpha: ' + str(alpha))
+                for smaller_alpha in seq(alpha - step_size, alpha, smaller_step_size):
+                    result_inner = change_alpha(xfoil, smaller_alpha)
+                    if result_inner == 1:
+                        print(
+                            str(p_index) + ': File: ' + foil_name + ' convergence failed for smaller_alpha: ' + str(
+                                smaller_alpha))
+                    elif result_inner != 0:
+                        xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
+                        load_file(xfoil, parsed_file, foil_name)
+                        init(xfoil)
+                        print(str(p_index) + ': File: ' + foil_name + ' timed out/EOF for smaller_alpha: ' + str(
+                            smaller_alpha))
 
-        run_sequence(xfoil, p_index, foil_name, 0, 20, step_size, smaller_step_size)
-        run_sequence(xfoil, p_index, foil_name, 0, -20, -step_size, -smaller_step_size)
+            else:
+                # Restart
+                xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
+                load_file(xfoil, parsed_file, foil_name)
+                init(xfoil)
+                print(str(p_index) + ': File: ' + foil_name + ' timed out/EOF for alpha: ' + str(alpha))
 
+        for alpha in seq(0, -20, -step_size):
+            result = change_alpha(xfoil, alpha)
+            if result in [0, 1]:
+                continue
+            elif result == 2:
+                print(str(p_index) + ': File: ' + foil_name + ' convergence failed for alpha: ' + str(alpha))
+                for smaller_alpha in seq(alpha + step_size, alpha, -smaller_step_size):
+                    result_inner = change_alpha(xfoil, smaller_alpha)
+                    if result_inner == 2:
+                        print(
+                            str(p_index) + ': File: ' + foil_name + ' convergence failed for smaller_alpha: ' + str(
+                                smaller_alpha))
+                    elif result_inner not in [0, 1]:
+                        xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
+                        load_file(xfoil, parsed_file, foil_name)
+                        init(xfoil)
+                        print(str(p_index) + ': File: ' + foil_name + ' timed out/EOF for smaller_alpha: ' + str(
+                            smaller_alpha))
+
+            else:
+                # Restart
+                xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
+                load_file(xfoil, parsed_file, foil_name)
+                init(xfoil)
+                print(str(p_index) + ': File: ' + foil_name + ' timed out/EOF for alpha: ' + str(alpha))
+
+        # run_sequence(xfoil, p_index, foil_name, 0, 20, step_size, smaller_step_size)
+        # run_sequence(xfoil, p_index, foil_name, 0, -20, -step_size, -smaller_step_size)
         end = time.time()
-        print(str(p_index) + ': ' + foil_name + ' processed. Took: ' + str(end - start) + ' seconds')
+        print(str(p_index) + ': ' + foil_name + ' processed. Took: ' + str(end - start_time) + ' seconds')
         with open('processed.txt', 'a') as processed:
             processed.write(parsed_file + '\n')
         return str(p_index) + ': ' + foil_name + ' processed.'

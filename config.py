@@ -18,12 +18,8 @@ batch_count = 5
 # Constant prompts
 XFOIL_C = ' XFOIL   c>'
 MDES_C = '.MDES   c>'
-OPERI_C = '.OPERi   c>'
-OPERV_C = '.OPERv   c>'
-OPERIA_C = '.OPERia   c>'
-OPERVA_C = '.OPERva   c>'
-OPER_C = [OPERIA_C, OPERVA_C, OPERV_C, OPERI_C]
+OPER_C = '\.OPER[iva]*   c>'
 POLAR_SAVE_P = 'Enter  polar save filename  OR  <return> for no file   s>'
 POLAR_DUMP_P = 'Enter  polar dump filename  OR  <return> for no file   s>'
-CONVERGENCE_FAILED_P = 'VISCAL:  Convergence failed'
-ALFA_END = [CONVERGENCE_FAILED_P, OPERVA_C, OPERIA_C, wexpect.EOF]
+CONVERGENCE_FAILED_P = 'VISCAL:  Convergence failed[\s]+[\r\n]+' + OPER_C
+ALFA_P = [OPER_C, CONVERGENCE_FAILED_P, wexpect.EOF, wexpect.TIMEOUT]

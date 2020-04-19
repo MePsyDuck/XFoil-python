@@ -5,7 +5,7 @@ import time
 
 import wexpect
 
-from config import xfoil_path, step_size, smaller_step_size, XFOIL_C, MDES_C, POLAR_DUMP_P, POLAR_SAVE_P, ALFA_END, \
+from config import xfoil_path, step_size, smaller_step_size, XFOIL_C, MDES_C, POLAR_DUMP_P, POLAR_SAVE_P, ALFA_P, \
     batch_count, OPER_C
 from util import parsed_file_path, seq, parsed_newpolar_file_path, get_unprocessed_files, chunk_it
 
@@ -49,7 +49,7 @@ def reset(xfoil):
 def change_alpha(xfoil, alpha):
     xfoil.sendline('ALFA ' + str(alpha))
     try:
-        return xfoil.expect(ALFA_END, timeout=120)
+        return xfoil.expect(ALFA_P, timeout=120)
     except wexpect.wexpect_util.TIMEOUT:
         print('timeout for alpha : ' + str(alpha))
         return 1
