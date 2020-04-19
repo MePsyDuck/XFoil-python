@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from config import parsed_dir, new_polar_dir
 
@@ -24,19 +25,14 @@ def get_unprocessed_files():
     with open('unprocessed.txt', 'r') as unprocessed:
         unprocessed_files = unprocessed.read().splitlines()
         files = [file for file in files if file not in unprocessed_files]
-        return files
+
+    remove_partial_processed_files(files)
+    return files
 
 
-def chunk_it(files, batch_size):
-    avg = len(files) / float(batch_size)
-    out = []
-    last = 0.0
-
-    while last < len(files):
-        out.append(files[int(last):int(last + avg)])
-        last += avg
-
-    return out
+def remove_partial_processed_files(parsed_files):
+    for file in parsed_files:
+        shutil.rmtree(file)
 
 
 def seq(start, stop, step=1):

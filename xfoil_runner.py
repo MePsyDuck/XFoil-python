@@ -1,13 +1,12 @@
 import multiprocessing
-import os
 import signal
 import time
 
 import wexpect
 
 from config import xfoil_path, step_size, smaller_step_size, XFOIL_C, MDES_C, POLAR_DUMP_P, POLAR_SAVE_P, ALFA_P, \
-    batch_count, OPER_C
-from util import parsed_file_path, seq, parsed_newpolar_file_path, get_unprocessed_files, chunk_it
+    OPER_C, max_restarts, start, end
+from util import parsed_file_path, seq, parsed_newpolar_file_path, get_unprocessed_files
 
 
 def load_file(xfoil, parsed_file, foil_name):
@@ -46,69 +45,95 @@ def reset(xfoil):
     xfoil.sendline('')
 
 
+def init(xfoil):
+    xfoil.sendline('INIT')
+
+
 def change_alpha(xfoil, alpha):
     xfoil.sendline('ALFA ' + str(alpha))
     try:
         return xfoil.expect(ALFA_P, timeout=120)
     except wexpect.wexpect_util.TIMEOUT:
-        print('timeout for alpha : ' + str(alpha))
-        return 1
+        return -1
 
 
-def run_xfoil(parsed_files):
+def restart_xfoil(xfoil, p_index, foil_name, parsed_file, restarts):
+    if restarts < max_restarts:
+        xfoil.kill(signal.SIGINT)
+        xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
+        load_file(xfoil, parsed_file, foil_name)
+        init(xfoil)
+        return xfoil
+    else:
+        raise Exception('{0:4d}: File: {1:20s} was restarted too many times.'.format(p_index, foil_name))
+
+
+def run_sequence(xfoil, p_index, foil_name, parsed_file, start_, end_, step_size_, smaller_step_size_):
+    restarts = 0
+
+    for alpha in seq(start_, end_, step_size_):
+        result = change_alpha(xfoil, alpha)
+        if result == 0:
+            continue
+        elif result == 1:
+            print('{0:4d}: File: {1:20s} convergence failed for alpha: {2:5f}'.format(p_index, foil_name, alpha))
+            for smaller_alpha in seq(alpha - step_size_, alpha, smaller_step_size_):
+                result_inner = change_alpha(xfoil, smaller_alpha)
+                if result_inner == 1:
+                    print('{0:4d}: File: {1:20s} convergence failed for smaller_alpha: {2:5f}'.format(p_index,
+                                                                                                      foil_name,
+                                                                                                      smaller_alpha))
+                elif result_inner != 0:
+                    xfoil = restart_xfoil(xfoil, p_index, foil_name, parsed_file, restarts)
+                    restarts += 1
+                    print('{0:4d}: File: {1:20s} timed out/EOF for smaller_alpha: {2:5f}'.format(p_index,
+                                                                                                 foil_name,
+                                                                                                 smaller_alpha))
+        else:
+            xfoil = restart_xfoil(xfoil, p_index, foil_name, parsed_file, restarts)
+            restarts += 1
+            print('{0:4d}: File: {1:20s} timed out/EOF for alpha: {2:5f}'.format(p_index, foil_name, alpha))
+    return xfoil
+
+
+def run_xfoil(p_index, parsed_file):
     xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
-    with open('processed.txt', 'a') as processed:
+
+    start_time = time.time()
+    foil_name = parsed_file.split('.')[0]
+
+    if load_file(xfoil, parsed_file, foil_name):
+        try:
+            xfoil = run_sequence(xfoil, p_index, foil_name, parsed_file, start, end, step_size, smaller_step_size)
+            run_sequence(xfoil, p_index, foil_name, parsed_file, start, -end, -step_size, -smaller_step_size)
+        except Exception as ex:
+            print(str(ex))
+            with open('unprocessed.txt', 'a') as unprocessed:
+                unprocessed.write(parsed_file + '\n')
+            return str(ex)
+
+        end_time = time.time()
+        print('{0:4d}: File: {1:20s} processed. Took: {2:5f} seconds'.format(p_index, foil_name, end_time - start_time))
+        with open('processed.txt', 'a') as processed:
+            processed.write(parsed_file + '\n')
+        return '{0:4d}: {1:20s} processed.'.format(p_index, foil_name)
+
+    else:
+        print('{0:4d}: File: {1:20s} processing failed.'.format(p_index, foil_name))
         with open('unprocessed.txt', 'a') as unprocessed:
-            for parsed_file in parsed_files:
-                start = time.time()
-                foil_name = parsed_file.split('.')[0]
-
-                if load_file(xfoil, parsed_file, foil_name):
-                    for alpha in seq(0, 20, step_size):
-                        if change_alpha(xfoil, alpha) == 0:
-                            for smaller_alpha in seq(alpha - 0.25, alpha, smaller_step_size):
-                                change_alpha(xfoil, smaller_alpha)
-
-                    for alpha in seq(0, -20, -step_size):
-                        if change_alpha(xfoil, alpha) == 0:
-                            for smaller_alpha in seq(alpha + 0.25, alpha, -smaller_step_size):
-                                change_alpha(xfoil, smaller_alpha)
-                else:
-                    xfoil.kill(signal.SIGINT)
-                    xfoil = wexpect.spawn(xfoil_path, encoding='utf-8')
-                    end = time.time()
-                    print(str(os.getpid()) + ': File was unprocessed ' + parsed_file + ' took ' + str(end - start))
-                    unprocessed.write(parsed_file + '\n')
-                    unprocessed.flush()
-                    continue
-
-                reset(xfoil)
-                end = time.time()
-                print(str(os.getpid()) + ': File ' + parsed_file + ' took ' + str(end - start))
-                processed.write(parsed_file + '\n')
-                processed.flush()
-
-
-def make_processes():
-    parsed_files = get_unprocessed_files()
-    batches = chunk_it(parsed_files, batch_count)
-
-    processes = []
-    # creating processes
-    for batch in batches:
-        processes.append(multiprocessing.Process(target=run_xfoil, args=(batch,)))
-
-    # starting process
-    for process in processes:
-        process.start()
-
-    # wait until process is finished
-    for process in processes:
-        process.join()
-
-    # all processes finished
-    print("Done!")
+            unprocessed.write(parsed_file + '\n')
+        return '{0:4d}: {1:20s} failed.'.format(p_index, foil_name)
 
 
 if __name__ == '__main__':
-    make_processes()
+    parsed_files = get_unprocessed_files()
+
+    print('Processing {0} files'.format(len(parsed_files)))
+
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        pool.starmap(run_xfoil, enumerate(parsed_files))
+
+    with open('output.txt', 'a') as output:
+        output.writelines(pool)
+
+    print('Done!')
